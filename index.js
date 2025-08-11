@@ -2,177 +2,104 @@ require('dotenv').config();
 const { faker } = require('@faker-js/faker');
 const mysql = require('mysql2');
 const express = require('express');
-const app = express();
-const port = 8080;
 const path = require("path");
 const methodOverride = require('method-override');
 
+const app = express();
+const port = process.env.PORT || 8080;
+
+// Middleware
 app.use(methodOverride("_method"));
-app.use(express.urlencoded({ extended: true })); // Middleware for form data
-app.set("view engine","ejs");
-app.set("views",path.join(__dirname,"/views"));
+app.use(express.urlencoded({ extended: true }));
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "/views"));
 
-
+// MySQL connection
 const connection = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD
+    port: process.env.DB_PORT
 });
 
-let getRandomUser=()=> {
-    return [
-        faker.string.uuid(),
-        faker.internet.username(), // before version 9.1.0, use userName()
-        faker.internet.email(),
-        faker.internet.password(),
-    ];
-}
-// //inserting data
-// let q="INSERT INTO user(id,username,email,password) VALUES ?";
-
-// let data = [];
-// for(let i=0;i<=100;i++){
-//     data.push(getRandomUser());
-// }
-
-
-//Home Route
-app.get("/",(req,res)=>{
-    let q = `SELECT count(*) FROM user`;
-    try{
-        connection.query(q,(err,result)=>{
-        if(err)throw err;
-        let count = (result[0]["count(*)"]);
-        res.render("home.ejs",{count});
-        });
-    }catch(err){
-        console.log(err);
-        res.send("Some errors in DB");
+connection.connect(err => {
+    if (err) {
+        console.error("❌ Error connecting to DB:", err);
+        process.exit(1);
     }
+    console.log("✅ Connected to MySQL database");
 });
 
+// Utility function for random user
+const getRandomUser = () => [
+    faker.string.uuid(),
+    faker.internet.username(),
+    faker.internet.email(),
+    faker.internet.password(),
+];
 
-//Show Route
-app.get("/user",(req,res)=>{
-     let q = `SELECT * FROM user`;
-    try{
-    connection.query(q,(err,users)=>{
-        if(err)throw err;
-       // console.log(result);
-        // res.send(result);
-        res.render("showusers.ejs",{users});
-    });
-    }catch(err){
-        res.send("Some errors in DB");
-    }
-});
-
-
-//Edit route
-app.get("/user/:id/edit",(req,res)=>{
-    let {id} = req.params;
-    let q = `SELECT * FROM user WHERE id='${id}'`;
-    try{
-        connection.query(q,(err,result)=>{
-            if(err) throw err;
-
-        if (result.length === 0) {
-            return res.send("No user found.");
-        }
-
-            let user = result[0];
-            res.render("edit.ejs",{user});
-        });
-    }catch(err){
-        console.log(err);
-        res.send("some errors in DB");
-    }
-});
-
-//Update route
-app.patch("/user/:id", (req, res) => {
-    let { id } = req.params;
-    let { password: formPass, username: newUsername } = req.body;
-    let q = `SELECT * FROM user WHERE id='${id}'`;
+// Routes
+app.get("/", (req, res) => {
+    const q = `SELECT count(*) AS count FROM user`;
     connection.query(q, (err, result) => {
-        if (err) {
-            console.log(err);
-            return res.send("Some error in DB while fetching user.");
-        }
-        if (result.length === 0) {
-            return res.send("No user found.");
-        }
-        let user = result[0];
-        if (formPass != user.password) {
-            return res.send("Wrong Password");
-        } else {
-            let q2 = `UPDATE user SET username = '${newUsername}' WHERE id = '${id}'`; // fixed the quote here
-            connection.query(q2, (err, result) => {
-                if (err) {
-                    console.log(err);
-                    return res.send("Some error in DB while updating user.");
-                }
-                res.redirect("/user");
-            });
-        }
+        if (err) return res.send("DB Error");
+        res.render("home.ejs", { count: result[0].count });
     });
 });
 
+app.get("/user", (req, res) => {
+    connection.query(`SELECT * FROM user`, (err, users) => {
+        if (err) return res.send("DB Error");
+        res.render("showusers.ejs", { users });
+    });
+});
 
-//Add new user
-app.post("/user",(req,res)=>{
-    let{username,email,password} = req.body;
-    let q=`INSERT INTO user (id,username,email,password) VALUES (uuid(),?,?,?)`;
+app.get("/user/:id/edit", (req, res) => {
+    const { id } = req.params;
+    connection.query(`SELECT * FROM user WHERE id = ?`, [id], (err, result) => {
+        if (err) return res.send("DB Error");
+        if (result.length === 0) return res.send("No user found.");
+        res.render("edit.ejs", { user: result[0] });
+    });
+});
 
-    try{
-        connection.query(q,[username,email,password],(err,result)=>{
-            if(err)throw err;
-            res.redirect("/user"); //show updated list
+app.patch("/user/:id", (req, res) => {
+    const { id } = req.params;
+    const { password: formPass, username: newUsername } = req.body;
+
+    connection.query(`SELECT * FROM user WHERE id = ?`, [id], (err, result) => {
+        if (err) return res.send("DB Error");
+        if (result.length === 0) return res.send("No user found.");
+        if (formPass !== result[0].password) return res.send("Wrong Password");
+
+        connection.query(`UPDATE user SET username = ? WHERE id = ?`, [newUsername, id], (err) => {
+            if (err) return res.send("DB Error");
+            res.redirect("/user");
         });
-    }catch(err){
-        console.log(err);
-        res.send("Some error in DB");
-    }
+    });
 });
 
-// Form dikhane ka route
+app.post("/user", (req, res) => {
+    const { username, email, password } = req.body;
+    const q = `INSERT INTO user (id, username, email, password) VALUES (uuid(), ?, ?, ?)`;
+    connection.query(q, [username, email, password], (err) => {
+        if (err) return res.send("DB Error");
+        res.redirect("/user");
+    });
+});
+
 app.get("/adduser", (req, res) => {
-    res.render("addUser.ejs");  // views/addUser.ejs file render karega
+    res.render("addUser.ejs");
 });
-
 
 app.delete("/user/:id", (req, res) => {
-    let { id } = req.params;
-    let q = `DELETE FROM user WHERE id = ?`;
-
-    connection.query(q,[id],(err, result) => {
-        if (err) {
-            console.log(err);
-            return res.send("Some error in DB while deleting user.");
-        }
-        res.redirect("/user"); // Show updated user list
+    connection.query(`DELETE FROM user WHERE id = ?`, [req.params.id], (err) => {
+        if (err) return res.send("DB Error");
+        res.redirect("/user");
     });
 });
 
-
-
-app.listen(port,(req,res)=>{
-    console.log(`App is listening on port ${port}`);
-    
-})
-
-
-// try{
-//     connection.query(q,[data],(err,result)=>{
-//     if(err)throw err;
-//     console.log(result);
-//     console.log(result.length);
-    
-// });
-// }catch(err){
-//     console.log(err);
-// }
-
-// connection.end();
-
+app.listen(port, () => {
+    console.log(`🚀 Server running on port ${port}`);
+});
