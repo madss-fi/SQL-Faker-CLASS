@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All User's Data</title>
+    <!-- <style>
+        table,
+        th,
+        td{
+            border:1px solid black;
+        }
+    </style> -->
+</head>
+<body>
+    <h1>All User's Data :- </h1>
+    <a href="/adduser">
+        <button style="color:white; background-color: rgb(62, 62, 99); text-align: center; height: 5vh;width: 100px; margin-bottom: 20px;">Add User</button>
+    </a>
+    <table border="1" cellPadding="5">
+        <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>In Case</th>
+            <th>Drop</th>
+        </tr>
+        <tbody>
+            <% for(let user of users){ %>
+                <tr>
+                    <td><%= user.id %></td>
+                    <td><%= user.username %></td>
+                    <td><%= user.email %></td>
+                    
+                    <td>
+                        <form metho="GET" action=" /user/<%= user.id %>/edit">
+                        <button>Edit Username</button> 
+                    </form>
+                    </td>
+
+                    <td>
+                        <form method="POST" action="/user/<%= user.id %>?_method=DELETE">
+                        <button>Delete Information</button> 
+                    </form>
+                    </td>
+                </tr>
+            <% } %>
+        </tbody>
+    </table>
+</body>
+</html>
+
